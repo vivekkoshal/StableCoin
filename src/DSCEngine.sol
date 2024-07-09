@@ -27,7 +27,7 @@ import{DecnStableCoin} from "../src/DecnStableCoin.sol";
 import{ReentrancyGuardUpgradeable} from "../lib/openzeppelin-contracts/contracts/access/ReentrancyGuardUpgradeable.sol";  //this is to prevent reentrant attacks
 import{IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol"; //this is for interaction purpose (has a transferfrom function which transfer the token from sender to reciever contract)
 import {AggregatorV3Interface} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol"; 
-
+import{OracleLib} from "./Libraries/OracleLib.sol";
 
 /**
 *@title DSCEngine
@@ -57,6 +57,14 @@ contract DSCEngine is ReentrancyGuardUpgradeable {
     error DSCEngine__MintFailed();
     error DSCEngine__HealthFactorIsOK();
     error DSCEngine__HealthFactorNotImproved();
+
+    ///////////////////
+    //types//////////
+    ////////////////// 
+    using OracleLib for AggregatorV3Interface;  //this way whenever we used latestroung data we can replace it will function we created with checks(stale price)
+
+
+
 
     ///////////////////
     //State Veriables//
@@ -304,7 +312,11 @@ contract DSCEngine is ReentrancyGuardUpgradeable {
     function _healthFactor(address user) private view returns(uint256) {
      //to find this we need //toatal dsc minted and //total collatereal value
 
+  
      (uint256 totalDscMinted , uint256 CollateralValueUSD) = _getAccountInformation(user);
+    
+      if(totalDscMinted == 0) return type(uint256).max;  //this is to avoid 0/0 error in the return statement below this
+    
      uint256 collateralAdjestForThreshold = (CollateralValueUSD * LIQUIDATION_THRESHOLD)/100; 
      
       return ((collateralAdjestForThreshold  * 1e18)/ totalDscMinted); //for not being liquidated it should never do bellow 1
@@ -336,9 +348,9 @@ contract DSCEngine is ReentrancyGuardUpgradeable {
         //eg -> 1eth = 2000usd  -> 1000usd  = 0.5eth
 
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
-        (,int256 price ,,,) = priceFeed.latestRoundData();
+        (,int256 price ,,,) = priceFeed.stalePriceCheckLatestRoundData();
         
-        return (((USDamountInWei * 1e18) / (uint256(price)* 1e8)) / 1e8);    //price has 8 decimal places pricision
+        return (((USDamountInWei * 1e18) / (uint256(price)* 1e10)));    //price has 8 decimal places pricision
 
     }
 
@@ -357,7 +369,7 @@ contract DSCEngine is ReentrancyGuardUpgradeable {
 
     function getUSDValue (address token , uint256 amount) public view returns(uint256){
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
-        (,int256 price ,,,) = priceFeed.latestRoundData();
+        (,int256 price ,,,) = priceFeed.stalePriceCheckLatestRoundData();
         //let 1ETH = 1000USD returned value from the price feed = 1000* 1e8 //we get this 8 decimal place as it is specified in chainlink docs
 
         // here the amount is in 1e18 format and price is in 1e8;
@@ -367,4 +379,28 @@ contract DSCEngine is ReentrancyGuardUpgradeable {
 
 
 
+    function getAccountInformation(address user) external view returns(uint256 totalDscMinted , uint256 CollateralValueUSD){
+        (totalDscMinted , CollateralValueUSD) = _getAccountInformation(user);
+    }
+
+
+
+    ///GETTER FUNCTIONS//
+
+    function getCollateralTokens() public view returns(address[] memory){
+        return s_collateralTokens;
+    }
+
+    function getTotalTokenSupply(address user) public view returns(uint256){
+        return s_DscMinted[user];
+    }
+
+    function getCollateralBalanceOfUSer(address user , address token) public view returns(uint256){
+        return s_CollateralDeposited[user][token];
+    }
+    
+    function getCollateralTokenPriceFeed(address token) external view returns (address) {
+        return s_priceFeeds[token];
+    }
 }
+

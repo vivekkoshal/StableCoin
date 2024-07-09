@@ -5,4 +5,10 @@ libs = ["lib"]
 remappings = [
   '@chainlink/contracts/=lib/chainlink-brownie-contracts/contracts/src/',
 ]
+
+
+[invariant]
+runs = 128         #no. of times we want to run this function     
+depth = 128         #No. of calls in a single run
+fail_on_revert = false
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
